@@ -15,13 +15,13 @@ int leaseExpirey; //time at which this block will be returned to freelist
 //auto [allocated, leaseExpirey] = a;
 //auto [start, size] = r;
 freelist_t freeList;
-alloclist_t aloccList;
+alloclist_t allocList;
 const int MIN_LEASE = 40;
 const int MAX_LEASE = 70;
 const int MIN_SIZE = 50;
 const int MAX_SIZE = 350;
 const int TIME_LIMIT = 1000;
-//const int MEMORY_SIZE = 1000;
+const int MEMORY_SIZE = 1000;
 const int REQUEST_INTERVAL = 10;
 
 bool comp(const range& a, const range& b) { //for the starting points of objects in freelist
@@ -40,7 +40,7 @@ void printFree(freelist_t list) {
 
 void printAlloc(alloclist_t list) {
 	for (alloc e : list) {
-		//printFree(e.first);
+		//printFree(e.first); //no suitable conversion exists?
 
 	}
 }
@@ -59,30 +59,72 @@ bool merge() { //called whenever a request is denied
 	return change;
 }
 
-void generateReq() {
-	//range r = range((), ()); //first number is the start position, second is the size
-	//alloc a = alloc(r, ()); //second number is the time (in ticks) for it to be allocated for
-	reqTotal++;
-	int size = MIN_SIZE + (rand() % (MAX_SIZE - MIN_SIZE + 1)); //making a number between 50 and 350
+bool pushReq(int size) {
+	bool satis = false;
 	for (range e : freeList) {
+		if (e.second >= size) {
+			int start = e.first; //saving the current value for e.first (since it will be the new start point for the allocated space)
+			//if e.second==size, just change the value in free list to alloc list, otherwise segment off a part of freelist to alloclist
+			int time = MIN_LEASE + (rand() % (MAX_LEASE - MIN_LEASE + 1)); //number between the min and max lease inclusive
+			if (e.second > size) { //if else statement to deal with free list in each scenario, not alloclist
+				e.second -= size; //changing the values of freelist (since I don't need to make another range for freeList to push)
+				e.first += size;
+			}
+			else { //e.second==size
+				e.second = 0; 
+				e.first = -1; //making the start -1 so it'll be pushed to the back by sort to pop it
+				std::sort(freeList.begin(), freeList.end()); //may change to bubble sort for efficiency, but it should work
+				freeList.pop_back();
+			}
+			alloc a = alloc(range(start, size), time);
+			allocList.push_back(a);
+			reqSatis++;
+			satis = true;
+			break;
+		}
+	}
+	return satis;
+}
 
+void generateReq() {
+	reqTotal++;
+	int size = MIN_SIZE + (rand() % (MAX_SIZE - MIN_SIZE + 1)); //making a number between 50 and 350 inclusive
+	bool satis = pushReq(size); //pushReq returns whether the push was successful or not
+	if (!satis) { //if the request is not satisfied
+		merge();
+		satis = pushReq(size); //tries again after merging any adjacent free space
+		if (!satis) { //if there's still not enough space, then it can't be fulfilled
+			reqUnsat++; //reqSatis is incremented in pushReq if space is avaliable
+		}
 	}
 }
 
 int main() {
-	freeList.push_back(range(0, 1000)); //pushing back all the memory space
+	freeList.push_back(range(0, MEMORY_SIZE)); //pushing back all the memory space
 	for (long int clock = 0; clock < TIME_LIMIT; clock++) {
+		if (!(allocList.empty())) { //checking if it's empty before seeing if any leases expire
+			int pop = 0; //for keeping track of how many times allocList needs to be popped (for multiple expiry's at once)
+			for (alloc e : allocList) {
+				e.second--;
+				if (e.second == 0) { //increments a variable to pop as many times as needed to
+					freeList.push_back(e.first); //pushing the allocated memory back to the free memory
+					pop++;
+				}
+				else { //do I need to do anything else?
+
+				}
+			}
+			for (pop; pop > 0; pop--) {
+				allocList.pop_back();
+			}
+		}
+		//going to check if a lease has expired, then generate a request to make more space avaliable for requests
 		if (clock % REQUEST_INTERVAL == 0) { //should I generate a request?
 			generateReq();
-			//do I have the space avaliable?
-			//for how long do you want it?
-			//should I join chunks of memory together as avaliable
-			//int i=r.begin()
 		}
 		//see if a lease has expired (multiple can expire at the same time)
 		//check to see if there's any before trying to check if it should expire
 
-	} //track requests made, number satisfied, and number unsatisfied
-	//always take the first avaliable chunk
+	}
 	//use std::sort(begin(), end()) and bool comp(const range&a,const range&b){ return (a.first<b.first); }
 }
