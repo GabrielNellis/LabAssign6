@@ -19,6 +19,37 @@ const int MAX_SIZE = 350;
 const int TIME_LIMIT = 1000;
 const int MEMORY_SIZE = 1000;
 const int REQUEST_INTERVAL = 10;
+int mergeTimes = 0, minBlock = 1000, maxBlock = 0, minTime = 1000, maxTime = 0; //for keeping track of final values, made sizes unrealistic
+std::vector<int> times;
+std::vector<int> blocks;
+
+void compareBlocks(int a) { //compares block sizes for min and max
+	if (a < minBlock) {
+		minBlock = a;
+	}
+	if (a > maxBlock) {
+		maxBlock = a;
+	}
+	blocks.push_back(a);
+}
+
+void compareTimes(int a) { //compares times for min and max
+	if (a < minTime) {
+		minTime = a;
+	}
+	if (a > maxTime) {
+		maxTime = a;
+	}
+	times.push_back(a);
+}
+
+int getAverage(std::vector<int> vec) { //gets the average block size and time requested
+	int sum = 0;
+	for (int e : vec) {
+		sum += e;
+	}
+	return (sum / vec.size());
+}
 
 bool comp(const range& a, const range& b) { //for the starting points of objects in freelist
 	return a.first > b.first;
@@ -42,6 +73,7 @@ void printAlloc(alloclist_t list) {
 }
 
 bool merge() { //called whenever a request is denied
+	mergeTimes++;
 	bool change = false;
 	for (int i = freeList.size()-1; i > 1; i--) { //going through the free list in reverse order (smallest start point to greatest)
 		if ((freeList[i].first + freeList[i].second) == freeList[i - 1].first) { 
@@ -62,6 +94,7 @@ bool pushReq(int size) {
 		if (freeList[i].second > size) {
 			int start = freeList[i].first; //saving the current value for e.first (since it will be the new start point for the allocated space)
 			int time = MIN_LEASE + (rand() % (MAX_LEASE - MIN_LEASE + 1)); //number between the min and max lease inclusive
+			compareTimes(time);
 			freeList[i].second -= size; //changing the values of freelist (since I don't need to make another range for freeList to push)
 			freeList[i].first += size; //not actually changing freeList
 			range r = range(start, size);
@@ -85,35 +118,54 @@ void generateReq() {
 		if (!satis) { //if there's still not enough space, then it can't be fulfilled
 			reqUnsat++; //reqSatis is incremented in pushReq if space is avaliable
 		}
+		else {
+			compareBlocks(size);
+		}
+	}
+	else {
+		compareBlocks(size);
 	}
 }
 
-int main() {
-	freeList.push_back(range(0, MEMORY_SIZE)); //pushing back all the memory space
-	for (long int clock = 0; clock < TIME_LIMIT; clock++) { //checking if leases expire before generating a request to make more space for requests
-		if (!(allocList.empty())) { //checking if it's empty before seeing if any leases expire
-			int pop = 0; //for keeping track of how many times allocList needs to be popped (for multiple expiry's at once)
-			for (int i = 0; i < allocList.size(); i++) {
-				allocList[i].second--; 
-				if (allocList[i].second <= 0) { //increments a variable to pop as many times as needed to
-					freeList.push_back(allocList[i].first); //pushing the allocated memory back to the free memory
-					pop++;
-				}
-			}
-			std::sort(freeList.begin(), freeList.end(), comp); //sorting the list after adding potentially several elements
-			std::sort(allocList.begin(), allocList.end(), comp1); //sorts the list before popping the elements
-			for (pop; pop > 0; pop--) {
-				allocList.pop_back(); 
+void checkLeases() {
+	if (!(allocList.empty())) { //checking if it's empty before seeing if any leases expire
+		int pop = 0; //for keeping track of how many times allocList needs to be popped (for multiple expiry's at once)
+		for (int i = 0; i < allocList.size(); i++) {
+			allocList[i].second--;
+			if (allocList[i].second == 0) { //increments a variable to pop as many times as needed to
+				freeList.push_back(allocList[i].first); //pushing the allocated memory back to the free memory
+				pop++;
 			}
 		}
-		if (clock % REQUEST_INTERVAL == 0) { //generates the memory requests
-			generateReq();
+		std::sort(freeList.begin(), freeList.end(), comp); //sorting the list after adding potentially several elements
+		std::sort(allocList.begin(), allocList.end(), comp1); //sorts the list before popping the elements
+		for (pop; pop > 0; pop--) {
+			allocList.pop_back();
 		}
 	}
+}
+
+void printStats() {
+	std::cout << "Total requests = " << reqTotal << "  Successful requests = " << reqSatis << "  Failed requests = " << reqUnsat << "\n";
+	std::cout << "Smallest block requested = " << minBlock << " Maximum block requested = " << maxBlock;
+	std::cout << " Average block requested = " << getAverage(blocks) << "\n";
+	std::cout << "Smallest time requested = " << minTime << " Maximum time requested = " << maxTime;
+	std::cout << " Average time requested = " << getAverage(times) << "\n";
+	std::cout << "Times merged = " << mergeTimes << "\n";
 	std::cout << "free list: \n";
 	printFree(freeList);
 	std::cout << "allocated list: \n";
 	printAlloc(allocList);
-	std::cout << "total requests = " << reqTotal << "  successful requests = " << reqSatis << "  failed requests = " << reqUnsat;
+}
+
+int main() {
+	freeList.push_back(range(0, MEMORY_SIZE)); //pushing back all the memory space
+	for (long int clock = 0; clock <= TIME_LIMIT; clock++) { //checking if leases expire before generating a request to make more space for requests
+		checkLeases();
+		if (clock % REQUEST_INTERVAL == 0) { //generates the memory requests
+			generateReq();
+		}
+	}
+	printStats();
 	return 0;
 }
